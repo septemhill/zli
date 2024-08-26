@@ -7,6 +7,7 @@ CLI library for Ziglang
 - [ ] Add Examples  
 - [ ] Command Help  
 - [ ] Refactoring  
+- [ ] Update build.zig
 
 # Example
 

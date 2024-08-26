@@ -13,6 +13,42 @@ pub const Flag = struct {
     default_value: ValueType,
 };
 
+pub const App = struct {
+    alloc: std.mem.Allocator,
+    cmd_map: std.StringHashMap(Command),
+    args: [][]const u8,
+
+    pub fn init(alloc: std.mem.Allocator, argIter: *std.process.ArgIterator) !App {
+        var args = std.ArrayList([]const u8).init(alloc);
+        defer args.deinit();
+
+        _ = argIter.skip();
+        while (argIter.next()) |arg| {
+            _ = try args.append(arg);
+        }
+
+        return .{
+            .alloc = alloc,
+            .cmd_map = std.StringHashMap(Command).init(alloc),
+            .args = try args.toOwnedSlice(),
+        };
+    }
+
+    pub fn deinit(self: *App) void {
+        self.cmd_map.deinit();
+        std.ArrayList([]const u8).fromOwnedSlice(self.alloc, self.args).deinit();
+    }
+
+    pub fn addCommand(self: *App, name: []const u8, cmd: Command) !void {
+        try self.cmd_map.put(name, cmd);
+    }
+
+    pub fn run(self: *App) !void {
+        var cmd = self.cmd_map.get(self.args[0]) orelse return error.NoSuchSubcommand;
+        try cmd.run(self.args[1..]);
+    }
+};
+
 const Command = struct {
     ctx: *anyopaque,
     runFn: *const fn (*anyopaque, [][]const u8) anyerror!void,
@@ -31,27 +67,31 @@ pub fn CommandBuilder(cmd_flags: []const Flag) type {
             vmap: std.StringHashMap([]const u8),
             cmd_flags: []const Flag,
             gen_struct: generateStruct(cmd_flags),
-            handler: *const fn (generateStruct(cmd_flags)) anyerror!void,
+            handler: *const fn (GenStruct) anyerror!void,
         };
-
-        pub const GenStruct = generateStruct(cmd_flags);
 
         ctx: Context,
 
-        pub fn init(alloc: std.mem.Allocator, flags: []const Flag, handler: *const fn (generateStruct(cmd_flags)) anyerror!void) Self {
+        pub const GenStruct = generateStruct(cmd_flags);
+
+        pub fn init(alloc: std.mem.Allocator, handler: *const fn (GenStruct) anyerror!void) Self {
             return .{
                 .ctx = .{
                     .alloc = alloc,
                     .vmap = std.StringHashMap([]const u8).init(alloc),
-                    .cmd_flags = flags,
+                    .cmd_flags = cmd_flags,
                     .handler = handler,
-                    .gen_struct = generateStruct(cmd_flags){},
+                    .gen_struct = .{},
                 },
             };
         }
 
         pub fn deinit(self: *Self) void {
             self.ctx.vmap.deinit();
+        }
+
+        pub fn command(self: *Self) Command {
+            return Command{ .runFn = run, .ctx = self };
         }
 
         fn setValue(comptime T: type, anyval: []const u8) !?T {
@@ -123,17 +163,13 @@ pub fn CommandBuilder(cmd_flags: []const Flag) type {
 
             _ = try parseArgs(&self.ctx.vmap, args, self.ctx.cmd_flags);
 
-            inline for (std.meta.fields(generateStruct(cmd_flags))) |field| {
+            inline for (std.meta.fields(GenStruct)) |field| {
                 if (self.ctx.vmap.get(field.name)) |value| {
                     @field(self.ctx.gen_struct, field.name) = (try setValue(field.type, value)).?;
                 }
             }
 
             try self.ctx.handler(self.ctx.gen_struct);
-        }
-
-        pub fn command(self: *Self) Command {
-            return Command{ .runFn = run, .ctx = self };
         }
 
         fn generateStruct(flags: []const Flag) type {
