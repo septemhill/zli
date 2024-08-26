@@ -11,6 +11,7 @@ pub const Flag = struct {
     long: [:0]const u8,
     short: ?[]const u8,
     default_value: ValueType,
+    description: []const u8,
 };
 
 pub const App = struct {
