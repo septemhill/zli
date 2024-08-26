@@ -10,7 +10,7 @@ pub const ValueType = union(enum) {
 pub const Flag = struct {
     long: [:0]const u8,
     short: ?[]const u8,
-    defaultValue: ValueType,
+    default_value: ValueType,
 };
 
 const Command = struct {
@@ -50,8 +50,11 @@ pub fn CommandBuilder(cmd_flags: []const Flag) type {
             };
         }
 
+        pub fn deinit(self: *Self) void {
+            self.ctx.vmap.deinit();
+        }
+
         fn setValue(comptime T: type, anyval: []const u8) !?T {
-            // println("parse key: {s}, type: {any}", .{ anyval, T });
             switch (@typeInfo(T)) {
                 .Int => {
                     return @intCast(std.fmt.parseInt(i32, anyval, 10) catch return null);
@@ -97,10 +100,6 @@ pub fn CommandBuilder(cmd_flags: []const Flag) type {
             }
         }
 
-        pub fn deinit(self: *Self) void {
-            self.ctx.vmap.deinit();
-        }
-
         fn hashKey(flags: []const Flag, key: []const u8) ![]const u8 {
             const keyWithoutDash = if (key.len > 0 and key[0] == '-') if (key[1] == '-') key[2..] else key[1..] else key;
 
@@ -125,7 +124,9 @@ pub fn CommandBuilder(cmd_flags: []const Flag) type {
             _ = try parseArgs(&self.ctx.vmap, args, self.ctx.cmd_flags);
 
             inline for (std.meta.fields(generateStruct(cmd_flags))) |field| {
-                @field(self.ctx.gen_struct, field.name) = (try setValue(field.type, self.ctx.vmap.get(field.name).?)).?;
+                if (self.ctx.vmap.get(field.name)) |value| {
+                    @field(self.ctx.gen_struct, field.name) = (try setValue(field.type, value)).?;
+                }
             }
 
             try self.ctx.handler(self.ctx.gen_struct);
@@ -140,32 +141,32 @@ pub fn CommandBuilder(cmd_flags: []const Flag) type {
                 var fields: []const std.builtin.Type.StructField = &.{};
 
                 for (flags) |flag| {
-                    const field: std.builtin.Type.StructField = switch (flag.defaultValue) {
+                    const field: std.builtin.Type.StructField = switch (flag.default_value) {
                         .String => .{
                             .name = flag.long,
                             .type = []const u8,
-                            .default_value = @ptrCast(&@as([]const u8, flag.defaultValue.String)),
+                            .default_value = @ptrCast(&@as([]const u8, flag.default_value.String)),
                             .is_comptime = false,
                             .alignment = @alignOf([]const u8),
                         },
                         .Int => .{
                             .name = flag.long,
                             .type = i32,
-                            .default_value = &flag.defaultValue.Int,
+                            .default_value = &flag.default_value.Int,
                             .is_comptime = false,
                             .alignment = @alignOf(i32),
                         },
                         .Bool => .{
                             .name = flag.long,
                             .type = bool,
-                            .default_value = &flag.defaultValue.Bool,
+                            .default_value = &flag.default_value.Bool,
                             .is_comptime = false,
                             .alignment = @alignOf(bool),
                         },
                         .Float => .{
                             .name = flag.long,
                             .type = f32,
-                            .default_value = &flag.defaultValue.Float,
+                            .default_value = &flag.default_value.Float,
                             .is_comptime = false,
                             .alignment = @alignOf(f32),
                         },
@@ -193,7 +194,7 @@ pub fn CommandBuilder(cmd_flags: []const Flag) type {
 
 //         map: std.StringHashMap([]const u8),
 //         arr: std.ArrayList([]const u8),
-//         flags: []const Command.Flag,
+//         flags: []const Flag,
 //         params: []const []const u8,
 
 //         fn deinit(self: *Self) void {
@@ -212,10 +213,10 @@ pub fn CommandBuilder(cmd_flags: []const Flag) type {
 //             .args = .{
 //                 .map = std.StringHashMap([]const u8).init(alloc),
 //                 .arr = std.ArrayList([]const u8).init(alloc),
-//                 .flags = &[_]Command.Flag{
-//                     .{ .long = "age", .short = null, .defauleValue = .{ .Int = 123 } },
-//                     .{ .long = "married", .short = null, .defauleValue = .{ .Bool = true } },
-//                     .{ .long = "name", .short = null, .defauleValue = .{ .String = "Septem" } },
+//                 .flags = &[_]Flag{
+//                     .{ .long = "age", .short = null, .default_value = .{ .Int = 123 }, .description = "" },
+//                     .{ .long = "married", .short = null, .default_value = .{ .Bool = true }, .description = "" },
+//                     .{ .long = "name", .short = null, .default_value = .{ .String = "Septem" }, .description = "" },
 //                 },
 //                 .params = &.{ "--married", "false", "--name", "sample", "--age", "993" },
 //             },
