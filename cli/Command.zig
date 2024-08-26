@@ -15,9 +15,9 @@ pub const Flag = struct {
 
 const Command = struct {
     ctx: *anyopaque,
-    runFn: *const fn (*anyopaque, std.ArrayList([]const u8)) anyerror!void,
+    runFn: *const fn (*anyopaque, [][]const u8) anyerror!void,
 
-    pub fn run(self: *Command, args: std.ArrayList([]const u8)) anyerror!void {
+    pub fn run(self: *Command, args: [][]const u8) anyerror!void {
         return self.runFn(self.ctx, args);
     }
 };
@@ -77,10 +77,10 @@ pub fn CommandBuilder(cmd_flags: []const Flag) type {
             }
         }
 
-        fn parseArgs(map: *std.StringHashMap([]const u8), args: std.ArrayList([]const u8), flags: []const Flag) !void {
+        fn parseArgs(map: *std.StringHashMap([]const u8), args: [][]const u8, flags: []const Flag) !void {
             var key: []const u8 = "";
 
-            for (args.items) |arg| {
+            for (args) |arg| {
                 if (arg[0] == '-') {
                     if (key.len > 0) {
                         _ = try map.put(try hashKey(flags, key), "true");
@@ -119,7 +119,7 @@ pub fn CommandBuilder(cmd_flags: []const Flag) type {
             return error.NoSuchArg;
         }
 
-        fn run(ctx: *anyopaque, args: std.ArrayList([]const u8)) !void {
+        fn run(ctx: *anyopaque, args: [][]const u8) !void {
             var self: *Self = @ptrCast(@alignCast(ctx));
 
             _ = try parseArgs(&self.ctx.vmap, args, self.ctx.cmd_flags);
